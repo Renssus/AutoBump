@@ -51,6 +51,66 @@ class AutoBumpBot:
             logger.error(f"✗ Connection error: {str(e)}")
             return False
     
+    def get_application_id(self, bot_name):
+        """Get the application ID for bump bots"""
+        bot_ids = {
+            "Disboard": "302050872383242240",
+            "DiscServers": "1376241207428255784",
+            "D-Invites": "678211574183362571",
+            "Discadia": "1222548162741538938"
+        }
+        return bot_ids.get(bot_name)
+    
+    def send_slash_command(self, application_id, command_name="bump"):
+        """Send a slash command interaction to Discord"""
+        try:
+            url = f"{self.api_url}/interactions"
+            
+            # Interaction payload for slash command
+            payload = {
+                "type": 2,  # Application Command
+                "application_id": application_id,
+                "guild_id": None,  # DM or will be filled by Discord
+                "channel_id": str(self.channel_id),
+                "session_id": "placeholder",
+                "data": {
+                    "version": "1166735583352238130",
+                    "id": application_id,
+                    "name": command_name,
+                    "type": 1,
+                    "options": [],
+                    "application_command": {
+                        "id": application_id,
+                        "application_id": application_id,
+                        "version": "1166735583352238130",
+                        "type": 1,
+                        "name": command_name,
+                        "description": "Bump this server",
+                        "dm_permission": True,
+                        "contexts": [0, 1, 2],
+                        "integration_types": [0, 1],
+                        "options": []
+                    },
+                    "attachments": []
+                },
+                "nonce": str(int(time.time() * 1000))
+            }
+            
+            response = requests.post(url, headers=self.headers, json=payload, timeout=10)
+            
+            if response.status_code in [200, 201, 204]:
+                logger.info(f"✓ Slash command sent successfully")
+                return True
+            else:
+                # Fallback: Try sending as message (will trigger autocomplete)
+                logger.warning(f"Interaction API returned {response.status_code}, trying text fallback")
+                return self.send_message(f"/{command_name}")
+                
+        except Exception as e:
+            logger.error(f"✗ Error sending slash command: {str(e)}")
+            # Fallback to text
+            return self.send_message(f"/{command_name}")
+    
     def send_message(self, content):
         """Send a message to the channel"""
         try:
@@ -75,8 +135,15 @@ class AutoBumpBot:
         try:
             logger.info(f"→ Sending /bump command to {server_name}...")
             
-            # Send the slash command
-            success = self.send_message("/bump")
+            # Get the application ID for this bump service
+            app_id = self.get_application_id(server_name)
+            
+            if app_id:
+                # Try to send as proper slash command interaction
+                success = self.send_slash_command(app_id, "bump")
+            else:
+                # Fallback to text message
+                success = self.send_message("/bump")
             
             if success:
                 self.last_bump_time[server_name] = datetime.now()
